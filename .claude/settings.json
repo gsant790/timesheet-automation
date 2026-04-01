@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "timesheet": {
+      "command": "mcp-server/.venv/bin/python3",
+      "args": ["-m", "src.server"],
+      "cwd": "mcp-server",
+      "env": {}
+    }
+  }
+}
