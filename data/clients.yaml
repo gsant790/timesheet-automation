@@ -1,0 +1,15 @@
+# Fixed clients — these fill the remaining hours after potentials
+# Each entry maps a client name to its Jira project key and default issue
+#
+# Example:
+# - name: "Client Alpha"
+#   project_key: "ALPHA"
+#   default_issue_key: "ALPHA-1"   # The issue to log time against
+#
+# Potentials are auto-detected from Jira (issues containing "potential" in name)
+# and do NOT need to be listed here.
+
+fixed_clients: []
+# - name: ""
+#   project_key: ""
+#   default_issue_key: ""
