@@ -57,35 +57,55 @@ def _preview_timesheet(
     distribution = distribute_hours(working_days, potentials, fixed)
     worklogs = build_worklogs(distribution, descriptions)
 
+    # Build week index: week_label -> list of dates
+    from collections import defaultdict
+    weeks: dict[str, list] = {}
+    week_order = []
+    for d in working_days:
+        label = f"W{d.isocalendar()[1]}"
+        if label not in weeks:
+            weeks[label] = []
+            week_order.append(label)
+        weeks[label].append(d)
+
+    # Per-client hours per week
+    def weekly_hours(issue_id: int) -> dict:
+        result = {}
+        for label, days in weeks.items():
+            day_set = set(days)
+            result[label] = sum(
+                e["hours"]
+                for d in distribution
+                if d["date"] in day_set
+                for e in d["entries"]
+                if e["issue_id"] == issue_id
+            )
+        return result
+
     # Build summary
     total_hours = len(working_days) * 8.0
     client_summaries = []
     for pot in potentials:
-        pot_hours = sum(
-            e["hours"]
-            for d in distribution
-            for e in d["entries"]
-            if e["issue_id"] == pot["issue_id"]
-        )
+        wh = weekly_hours(pot["issue_id"])
+        monthly = sum(wh.values())
         client_summaries.append({
             "name": pot["name"],
             "type": "potential",
-            "weekly_hours": pot["hours_per_week"],
-            "monthly_hours": pot_hours,
+            "total_hours": pot["total_hours"],
+            "monthly_hours": monthly,
+            "weekly_hours": wh,
             "issue_id": pot["issue_id"],
         })
     for fc in fixed:
-        fc_hours = sum(
-            e["hours"]
-            for d in distribution
-            for e in d["entries"]
-            if e["issue_id"] == fc["issue_id"]
-        )
+        wh = weekly_hours(fc["issue_id"])
+        monthly = sum(wh.values())
         client_summaries.append({
             "name": fc["name"],
             "type": "fixed",
-            "monthly_hours": fc_hours,
+            "monthly_hours": monthly,
+            "weekly_hours": wh,
             "issue_key": fc["issue_key"],
+            "issue_id": fc["issue_id"],
         })
 
     return json.dumps({
@@ -94,6 +114,7 @@ def _preview_timesheet(
             "working_days": len(working_days),
             "pto_days": len(pto_days),
             "total_hours": total_hours,
+            "weeks": week_order,
             "clients": client_summaries,
         },
         "worklogs": worklogs,
@@ -157,7 +178,7 @@ def preview_timesheet(
         year: Year (e.g. 2026).
         pto_days: JSON array of PTO dates ["YYYY-MM-DD", ...].
         potentials: JSON array of potential clients, each with
-            {issue_id: int, name: str, hours_per_week: float}.
+            {issue_id: int, name: str, total_hours: float}.
 
     Returns:
         JSON with summary table and full worklog list for review.

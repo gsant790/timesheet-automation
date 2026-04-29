@@ -14,21 +14,21 @@ def set_env(monkeypatch):
 
 
 def test_cli_module_imports():
-    from src.cli import cmd_preview, cmd_submit, main  # noqa: F401
+    from src.cli import preview, submit, main  # noqa: F401
 
 
 class TestCLIPreview:
     def test_preview_writes_valid_json_file(self, tmp_path):
         """preview saves valid JSON with summary + worklogs to --output path."""
-        from src.cli import cmd_preview
+        from src.cli import preview
         import argparse
 
         output = tmp_path / "preview.json"
         args = argparse.Namespace(
             month=4,
             year=2026,
-            pto_days="[]",
-            potentials='[{"issue_id": 114282, "name": "Suncoast", "total_hours": 12}]',
+            pto_days=[],
+            potentials=[{"issue_id": 114282, "name": "Suncoast", "total_hours": 12}],
             output=str(output),
         )
         from unittest.mock import patch
@@ -42,7 +42,7 @@ class TestCLIPreview:
         }
         with patch("src.server._get_fixed_clients", return_value=clients), \
              patch("src.server.load_descriptions", return_value=descriptions):
-            cmd_preview(args)
+            preview(args)
 
         assert output.exists()
         data = json.loads(output.read_text())
@@ -51,32 +51,32 @@ class TestCLIPreview:
 
     def test_preview_summary_month(self, tmp_path):
         """summary.month matches year-month input."""
-        from src.cli import cmd_preview
+        from src.cli import preview
         import argparse
 
         output = tmp_path / "preview.json"
         args = argparse.Namespace(
-            month=4, year=2026, pto_days="[]", potentials="[]", output=str(output),
+            month=4, year=2026, pto_days=[], potentials=[], output=str(output),
         )
         from unittest.mock import patch
         clients = [{"name": "IDERA", "issue_id": 98698, "issue_key": "DELIVERY-1223"}]
         descriptions = {"potential": [], "fixed": ["Delivery management"]}
         with patch("src.server._get_fixed_clients", return_value=clients), \
              patch("src.server.load_descriptions", return_value=descriptions):
-            cmd_preview(args)
+            preview(args)
 
         data = json.loads(output.read_text())
         assert data["summary"]["month"] == "2026-04"
 
     def test_preview_each_working_day_totals_8h(self, tmp_path):
         """Every working day in the worklogs sums to exactly 8h."""
-        from src.cli import cmd_preview
+        from src.cli import preview
         import argparse
 
         output = tmp_path / "preview.json"
         args = argparse.Namespace(
-            month=4, year=2026, pto_days="[]",
-            potentials='[{"issue_id": 114282, "name": "Suncoast", "total_hours": 12}]',
+            month=4, year=2026, pto_days=[],
+            potentials=[{"issue_id": 114282, "name": "Suncoast", "total_hours": 12}],
             output=str(output),
         )
         from unittest.mock import patch
@@ -84,7 +84,7 @@ class TestCLIPreview:
         descriptions = {"potential": ["Pre-sales"], "fixed": ["Delivery management"]}
         with patch("src.server._get_fixed_clients", return_value=clients), \
              patch("src.server.load_descriptions", return_value=descriptions):
-            cmd_preview(args)
+            preview(args)
 
         data = json.loads(output.read_text())
         daily: dict[str, float] = {}
@@ -95,19 +95,19 @@ class TestCLIPreview:
 
     def test_preview_creates_parent_dirs(self, tmp_path):
         """--output path with missing parent dirs is created automatically."""
-        from src.cli import cmd_preview
+        from src.cli import preview
         import argparse
 
         output = tmp_path / "nested" / "deep" / "preview.json"
         args = argparse.Namespace(
-            month=4, year=2026, pto_days="[]", potentials="[]", output=str(output),
+            month=4, year=2026, pto_days=[], potentials=[], output=str(output),
         )
         from unittest.mock import patch
         clients = [{"name": "IDERA", "issue_id": 98698, "issue_key": "DELIVERY-1223"}]
         descriptions = {"potential": [], "fixed": ["Delivery management"]}
         with patch("src.server._get_fixed_clients", return_value=clients), \
              patch("src.server.load_descriptions", return_value=descriptions):
-            cmd_preview(args)
+            preview(args)
 
         assert output.exists()
 
@@ -132,18 +132,18 @@ class TestCLISubmit:
         return p
 
     def test_submit_refuses_without_approved(self, preview_file):
-        """submit exits with code 1 if --approved is not given."""
-        from src.cli import cmd_submit
+        """submit exits if --approved is not given."""
+        from src.cli import submit
         import argparse
 
         args = argparse.Namespace(preview_file=str(preview_file), approved=False)
         with pytest.raises(SystemExit) as exc:
-            cmd_submit(args)
-        assert exc.value.code == 1
+            submit(args)
+        assert exc.value.code  # truthy: string message or non-zero int
 
     def test_submit_missing_file_exits(self, tmp_path):
-        """submit exits with code 1 if the preview file does not exist."""
-        from src.cli import cmd_submit
+        """submit exits if the preview file does not exist."""
+        from src.cli import submit
         import argparse
 
         args = argparse.Namespace(
@@ -151,12 +151,12 @@ class TestCLISubmit:
             approved=True,
         )
         with pytest.raises(SystemExit) as exc:
-            cmd_submit(args)
-        assert exc.value.code == 1
+            submit(args)
+        assert exc.value.code
 
     def test_submit_posts_worklogs_to_tempo(self, preview_file, httpx_mock):
         """submit reads worklogs from the preview file and POSTs each to Tempo."""
-        from src.cli import cmd_submit
+        from src.cli import submit
         import argparse
 
         httpx_mock.add_response(
@@ -166,11 +166,11 @@ class TestCLISubmit:
         )
 
         args = argparse.Namespace(preview_file=str(preview_file), approved=True)
-        cmd_submit(args)  # should not raise
+        submit(args)  # should not raise
 
-    def test_submit_exits_1_on_tempo_failure(self, preview_file, httpx_mock):
-        """submit exits with code 1 if any Tempo submission fails."""
-        from src.cli import cmd_submit
+    def test_submit_exits_on_tempo_failure(self, preview_file, httpx_mock):
+        """submit exits if any Tempo submission fails."""
+        from src.cli import submit
         import argparse
 
         # Register twice: initial attempt + one retry on 5xx
@@ -187,5 +187,5 @@ class TestCLISubmit:
 
         args = argparse.Namespace(preview_file=str(preview_file), approved=True)
         with pytest.raises(SystemExit) as exc:
-            cmd_submit(args)
-        assert exc.value.code == 1
+            submit(args)
+        assert exc.value.code

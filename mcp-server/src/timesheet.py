@@ -5,8 +5,9 @@ a day-by-day distribution of hours that always totals 8h/day.
 """
 
 import calendar
+import hashlib
 import random
-from datetime import date, timedelta
+from datetime import date
 
 
 def get_working_days(month: int, year: int, pto_days: list[str]) -> list[date]:
@@ -42,9 +43,12 @@ def distribute_hours(
 ) -> list[dict]:
     """Distribute 8h/day across potentials and fixed clients.
 
+    Potentials are scattered across the month in natural 1-2.5h sessions.
+    Fixed clients fill the remaining hours each day.
+
     Args:
         working_days: List of working day dates.
-        potentials: Each has {name, issue_id, hours_per_week}.
+        potentials: Each has {name, issue_id, total_hours}.
         fixed_clients: Each has {name, issue_id}.
 
     Returns:
@@ -52,86 +56,102 @@ def distribute_hours(
         Every day's entries sum to exactly 8.0h.
     """
     daily_target = 8.0
-    result = []
+    # Leave at least 4h/day for fixed clients
+    max_potential_per_day = 4.0
 
-    # Group working days into weeks (Mon=0 based, group by ISO week)
-    weeks: dict[int, list[date]] = {}
-    for d in working_days:
-        week_num = d.isocalendar()[1]
-        weeks.setdefault(week_num, []).append(d)
+    day_potential_load: dict[date, float] = {d: 0.0 for d in working_days}
+    potential_schedule: dict[date, list[dict]] = {d: [] for d in working_days}
 
-    # For each potential, pre-assign which days of each week they appear on.
-    # Spread across 2-3 days per week, rotating the pattern.
-    potential_schedule: dict[str, set[date]] = {p["name"]: set() for p in potentials}
+    session_sizes = [1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5]
 
     for pot in potentials:
-        days_per_week = min(3, max(2, round(pot["hours_per_week"] / 1.5)))
-        offset = hash(pot["name"]) % 5  # deterministic but varied per potential
+        budget = _round_quarter(float(pot["total_hours"]))
+        seed_material = f"{pot['name']}:{pot['issue_id']}:{budget}".encode("utf-8")
+        seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:8], "big")
+        rng = random.Random(seed)
 
-        for week_num, week_days in weeks.items():
-            # Pick days_per_week days from this week, rotating start
-            available = len(week_days)
-            indices = []
-            for i in range(days_per_week):
-                idx = (offset + i * 2) % available  # spread out
-                if idx not in indices:
-                    indices.append(idx)
-            # If we got duplicates, just pick first N unique
-            indices = list(dict.fromkeys(indices))[:days_per_week]
-            # Ensure we don't exceed available days
-            indices = indices[:available]
+        # Shuffle days so sessions are spread naturally, not front-loaded
+        candidate_days = list(working_days)
+        rng.shuffle(candidate_days)
 
-            for idx in indices:
-                potential_schedule[pot["name"]].add(week_days[idx])
+        remaining = budget
+        for day in candidate_days:
+            if remaining <= 0:
+                break
+            available_slot = _round_quarter(max_potential_per_day - day_potential_load[day])
+            if available_slot < 0.5:
+                continue
 
-            offset = (offset + 1) % 5  # rotate for next week
+            viable = [s for s in session_sizes if s <= min(available_slot, remaining)]
+            if viable:
+                # Bias towards mid-range sizes (index from the upper half)
+                h = rng.choice(viable[max(0, len(viable) - 3):])
+            else:
+                h = _round_quarter(min(available_slot, remaining))
+
+            h = min(h, remaining)
+            h = _round_quarter(h)
+            if h <= 0:
+                continue
+
+            potential_schedule[day].append({
+                "name": pot["name"],
+                "issue_id": pot["issue_id"],
+                "hours": h,
+                "type": "potential",
+            })
+            day_potential_load[day] = _round_quarter(day_potential_load[day] + h)
+            remaining = _round_quarter(remaining - h)
+
+        # If budget still unallocated, overflow into least-loaded days
+        if remaining > 0:
+            for day in sorted(working_days, key=lambda d: day_potential_load[d]):
+                if remaining <= 0:
+                    break
+                available_slot = _round_quarter(max_potential_per_day - day_potential_load[day])
+                if available_slot < 0.25:
+                    continue
+                h = _round_quarter(min(available_slot, remaining))
+                if h <= 0:
+                    continue
+                existing = next(
+                    (e for e in potential_schedule[day] if e["issue_id"] == pot["issue_id"]),
+                    None,
+                )
+                if existing:
+                    existing["hours"] = _round_quarter(existing["hours"] + h)
+                else:
+                    potential_schedule[day].append({
+                        "name": pot["name"],
+                        "issue_id": pot["issue_id"],
+                        "hours": h,
+                        "type": "potential",
+                    })
+                day_potential_load[day] = _round_quarter(day_potential_load[day] + h)
+                remaining = _round_quarter(remaining - h)
 
     # Build daily distribution
+    result = []
     for d in working_days:
-        entries = []
+        entries = list(potential_schedule[d])
+        potential_hours_today = sum(e["hours"] for e in entries)
 
-        # Add potentials scheduled for today
-        potential_hours_today = 0.0
-        for pot in potentials:
-            if d in potential_schedule[pot["name"]]:
-                # Calculate hours for this day
-                # Weekly hours spread across the days this potential appears this week
-                week_num = d.isocalendar()[1]
-                week_days_for_pot = [
-                    wd for wd in weeks[week_num]
-                    if wd in potential_schedule[pot["name"]]
-                ]
-                hours = _round_quarter(pot["hours_per_week"] / len(week_days_for_pot))
-                entries.append({
-                    "name": pot["name"],
-                    "issue_id": pot["issue_id"],
-                    "hours": hours,
-                    "type": "potential",
-                })
-                potential_hours_today += hours
-
-        # Distribute remaining hours to fixed clients
-        remaining = daily_target - potential_hours_today
-        if fixed_clients and remaining > 0:
-            per_client = _round_quarter(remaining / len(fixed_clients))
-
-            # Adjust for rounding: ensure total hits exactly 8h
-            fixed_entries = []
+        remaining_for_fixed = _round_quarter(daily_target - potential_hours_today)
+        if fixed_clients and remaining_for_fixed > 0:
+            per_client = _round_quarter(remaining_for_fixed / len(fixed_clients))
             allocated = 0.0
             for i, client in enumerate(fixed_clients):
                 if i == len(fixed_clients) - 1:
-                    # Last client gets whatever is left to hit 8h exactly
-                    hours = _round_quarter(remaining - allocated)
+                    hours = _round_quarter(remaining_for_fixed - allocated)
                 else:
                     hours = per_client
                     allocated += hours
-                fixed_entries.append({
+                entries.append({
                     "name": client["name"],
                     "issue_id": client["issue_id"],
                     "hours": hours,
                     "type": "fixed",
                 })
-            entries.extend(fixed_entries)
 
         result.append({"date": d, "entries": entries})
 
@@ -152,17 +172,17 @@ def build_worklogs(
         List of {issueId, timeSpentSeconds, startDate, description}.
     """
     worklogs = []
-    # Track last description per client to avoid consecutive repeats
     last_desc: dict[int, str] = {}
 
     for day in distribution:
         for entry in day["entries"]:
             pool = descriptions.get(entry["type"], ["Work"])
-            # Pick a description that differs from last time
             available = [d for d in pool if d != last_desc.get(entry["issue_id"])]
             if not available:
                 available = pool
-            desc = random.choice(available)
+            desc_index_seed = f"{day['date'].isoformat()}:{entry['issue_id']}:{entry['type']}".encode("utf-8")
+            desc_index = int.from_bytes(hashlib.sha256(desc_index_seed).digest()[:8], "big") % len(available)
+            desc = available[desc_index]
             last_desc[entry["issue_id"]] = desc
 
             worklogs.append({

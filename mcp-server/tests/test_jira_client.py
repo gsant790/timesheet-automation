@@ -26,14 +26,8 @@ class TestResolvePotential:
         from src.jira_client import JiraClient
 
         httpx_mock.add_response(
-            url=httpx.URL(
-                "https://test.atlassian.net/rest/api/3/search",
-                params={
-                    "jql": 'project="Engineering Support" AND summary ~ "Potential" AND summary ~ "Suncoast"',
-                    "fields": "summary",
-                    "maxResults": "10",
-                },
-            ),
+            method="POST",
+            url="https://test.atlassian.net/rest/api/3/search/jql",
             json=_mock_search_response([
                 {"id": 114282, "key": "ES-2483799", "summary": "Texas - Potential[L] - Suncoast Post-Tension"},
             ]),

@@ -8,8 +8,13 @@ import os
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
+# Auto-load .env from project root so env vars are available
+# regardless of how the server is launched (MCP stdio, CLI, tests)
+load_dotenv(DATA_DIR.parent / ".env")
 
 REQUIRED_ENV_VARS = [
     "TEMPO_API_TOKEN",

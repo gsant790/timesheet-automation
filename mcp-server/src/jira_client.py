@@ -29,9 +29,9 @@ class JiraClient:
             f'AND summary ~ "Potential" '
             f'AND summary ~ "{client_name}"'
         )
-        resp = self._client.get(
-            "/rest/api/3/search",
-            params={"jql": jql, "fields": "summary", "maxResults": "10"},
+        resp = self._client.post(
+            "/rest/api/3/search/jql",
+            json={"jql": jql, "fields": ["summary"], "maxResults": 10},
         )
         resp.raise_for_status()
         data = resp.json()

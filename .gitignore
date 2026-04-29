@@ -1,19 +1,24 @@
 # Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
-dist/
-build/
+
+# Virtual envs / local deps
 .venv/
 venv/
+env/
+mcp-server/.deps/
 
-# Environment — NEVER commit
+# Secrets
 .env
+.env.*
+!.env.example
 
-# OS
+# OS/editor
 .DS_Store
-
-# IDE
-.vscode/
 .idea/
+.vscode/
 

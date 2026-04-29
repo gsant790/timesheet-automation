@@ -18,9 +18,9 @@ Ask: "Any PTO or vacation days in [Month Year]? List specific dates, or say 'non
 
 ## Step 3: Potentials
 
-Ask: "Which potentials did you work on this month, and roughly how many hours per week each?"
+Ask: "Which potentials did you work on this month, and how many total hours for each?"
 
-Example answer: "Suncoast ~3h, BiometryX ~2h, GeoTap ~1h"
+Example answer: "Suncoast 12h, BiometryX 20h, GeoTap 8h"
 
 For each potential named, call the `resolve_potential` tool with the client name. If multiple matches come back, ask the user to pick the right one.
 
@@ -37,14 +37,37 @@ Call `get_fixed_clients` to load the current fixed client list.
 Then call `preview_timesheet` with:
 - `month` and `year` from Step 1
 - `pto_days` as JSON array of "YYYY-MM-DD" strings from Step 2
-- `potentials` as JSON array: each entry is `{"issue_id": <id>, "name": "<name>", "hours_per_week": <hours>}` from Step 3
+- `potentials` as JSON array: each entry is `{"issue_id": <id>, "name": "<name>", "total_hours": <hours>}` from Step 3
 
-Display the summary to the user as a table:
+Display three tables to the user.
 
-| Client | Type | Weekly hrs | Monthly hrs | Issue |
-|--------|------|-----------|-------------|-------|
-| ... | potential | 3.0h | 12.0h | ES-... |
-| ... | fixed | — | 32.0h | DELIVERY-... |
+**Table 1 — Weekly breakdown** (one column per week in the month):
+
+| Client | Type | W14 | W15 | W16 | W17 | W18 | Total |
+|--------|------|-----|-----|-----|-----|-----|-------|
+| Suncoast | potential | 3.5h | 2.0h | 3.0h | 2.5h | 1.0h | 12.0h |
+| IDERA | fixed | 7.0h | 8.0h | 8.0h | 6.5h | 2.0h | 31.5h |
+
+Use the `weeks` array from the response for column names.
+
+**Table 2 — Monthly totals**:
+
+| Client | Type | Total hrs | Issue |
+|--------|------|-----------|-------|
+| ... | potential | 12.0h | ES-... |
+| ... | fixed | 31.5h | DELIVERY-... |
+
+**Table 3 — Daily simulation (Tempo grid)**
+
+Build this from the `worklogs` array — rows are clients, columns are every calendar day of the month (including weekends, which are blank). Cells show hours logged; empty if no work that day. Last column is the row total; last row is the daily total.
+
+| Issue | Key | 01 Wed | 02 Thu | 03 Fri | 04 Sat | ... | 30 Thu | Total |
+|-------|-----|--------|--------|--------|--------|-----|--------|-------|
+| Suncoast | ES-... | 2h | | | | | 2.5h | 12h |
+| IDERA | DELIVERY-... | 1.5h | 2h | 1h | | | 1h | 31.75h |
+| **Total** | | 8h | 8h | 8h | | | 8h | 176h |
+
+Use the `issue_id` from each worklog to look up the client name and key from `summary.clients`.
 
 Then ask: "Does this look right, or do you want to adjust anything?"
 
@@ -62,6 +85,6 @@ Report the result: "Done! Submitted X worklogs for [Month Year]. (Y failed, if a
 
 - Every day must total exactly 8 hours
 - All values are in 0.25h (15-minute) increments
-- Potentials appear on 2-3 days per week, not every day
-- Fixed clients fill the remaining hours, split evenly
+- Potentials are scattered naturally across the month in 1–2.5h sessions, not every day
+- Fixed clients fill the remaining hours each day, split evenly
 - Descriptions are auto-generated — no need to ask the user

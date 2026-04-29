@@ -57,7 +57,7 @@ class TestDistributeHours:
 
         days = get_working_days(4, 2026, [])
         potentials = [
-            {"name": "Suncoast", "issue_id": 100, "hours_per_week": 3.0},
+            {"name": "Suncoast", "issue_id": 100, "total_hours": 12.0},
         ]
         fixed = [
             {"name": "IDERA", "issue_id": 1},
@@ -82,8 +82,8 @@ class TestDistributeHours:
 
         days = get_working_days(4, 2026, [])
         potentials = [
-            {"name": "A", "issue_id": 10, "hours_per_week": 3.0},
-            {"name": "B", "issue_id": 20, "hours_per_week": 2.0},
+            {"name": "A", "issue_id": 10, "total_hours": 12.0},
+            {"name": "B", "issue_id": 20, "total_hours": 8.0},
         ]
         fixed = [
             {"name": "C", "issue_id": 1},
@@ -105,7 +105,7 @@ class TestDistributeHours:
 
         days = get_working_days(4, 2026, [])
         potentials = [
-            {"name": "Suncoast", "issue_id": 100, "hours_per_week": 4.0},
+            {"name": "Suncoast", "issue_id": 100, "total_hours": 16.0},
         ]
         fixed = [{"name": "IDERA", "issue_id": 1}]
         result = distribute_hours(days, potentials, fixed)
