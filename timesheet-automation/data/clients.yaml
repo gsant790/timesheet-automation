@@ -1,0 +1,9 @@
+fixed_clients:
+  - name: "IDERA"
+    issue_key: "DELIVERY-1223"
+  - name: "Magic Memories"
+    issue_key: "DELIVERY-1310"
+  - name: "Wordly"
+    issue_key: "DELIVERY-1229"
+  - name: "TheAfterEve"
+    issue_key: "DELIVERY-1383"
