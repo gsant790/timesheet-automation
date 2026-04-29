@@ -12,7 +12,30 @@ from pathlib import Path
 
 
 def cmd_preview(args: argparse.Namespace) -> None:
-    raise NotImplementedError
+    from .server import _preview_timesheet
+
+    pto_days = json.loads(args.pto_days)
+    potentials = json.loads(args.potentials)
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    result = _preview_timesheet(
+        month=args.month,
+        year=args.year,
+        pto_days=pto_days,
+        potentials=potentials,
+    )
+    output.write_text(result)
+
+    data = json.loads(result)
+    summary = data["summary"]
+    print(
+        f"Preview saved to {output}\n"
+        f"  {summary['month']}  |  "
+        f"{summary['working_days']} working days  |  "
+        f"{summary['total_hours']:.0f}h total  |  "
+        f"{len(data['worklogs'])} worklogs"
+    )
 
 
 def cmd_submit(args: argparse.Namespace) -> None:
