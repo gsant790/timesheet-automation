@@ -18,7 +18,7 @@ def test_cli_module_imports():
 
 
 class TestCLIPreview:
-    def test_preview_writes_valid_json_file(self, tmp_path, httpx_mock):
+    def test_preview_writes_valid_json_file(self, tmp_path):
         """preview saves valid JSON with summary + worklogs to --output path."""
         from src.cli import cmd_preview
         import argparse
@@ -110,3 +110,82 @@ class TestCLIPreview:
             cmd_preview(args)
 
         assert output.exists()
+
+
+class TestCLISubmit:
+    @pytest.fixture
+    def preview_file(self, tmp_path):
+        worklogs = [
+            {
+                "issueId": 98698,
+                "timeSpentSeconds": 28800,
+                "startDate": "2026-04-01",
+                "description": "Delivery management",
+            }
+        ]
+        data = {
+            "summary": {"month": "2026-04", "working_days": 1, "total_hours": 8.0, "weeks": ["W14"], "clients": []},
+            "worklogs": worklogs,
+        }
+        p = tmp_path / "preview.json"
+        p.write_text(json.dumps(data))
+        return p
+
+    def test_submit_refuses_without_approved(self, preview_file):
+        """submit exits with code 1 if --approved is not given."""
+        from src.cli import cmd_submit
+        import argparse
+
+        args = argparse.Namespace(preview_file=str(preview_file), approved=False)
+        with pytest.raises(SystemExit) as exc:
+            cmd_submit(args)
+        assert exc.value.code == 1
+
+    def test_submit_missing_file_exits(self, tmp_path):
+        """submit exits with code 1 if the preview file does not exist."""
+        from src.cli import cmd_submit
+        import argparse
+
+        args = argparse.Namespace(
+            preview_file=str(tmp_path / "nonexistent.json"),
+            approved=True,
+        )
+        with pytest.raises(SystemExit) as exc:
+            cmd_submit(args)
+        assert exc.value.code == 1
+
+    def test_submit_posts_worklogs_to_tempo(self, preview_file, httpx_mock):
+        """submit reads worklogs from the preview file and POSTs each to Tempo."""
+        from src.cli import cmd_submit
+        import argparse
+
+        httpx_mock.add_response(
+            url="https://api.tempo.io/4/worklogs",
+            method="POST",
+            json={"tempoWorklogId": 1},
+        )
+
+        args = argparse.Namespace(preview_file=str(preview_file), approved=True)
+        cmd_submit(args)  # should not raise
+
+    def test_submit_exits_1_on_tempo_failure(self, preview_file, httpx_mock):
+        """submit exits with code 1 if any Tempo submission fails."""
+        from src.cli import cmd_submit
+        import argparse
+
+        # Register twice: initial attempt + one retry on 5xx
+        httpx_mock.add_response(
+            url="https://api.tempo.io/4/worklogs",
+            method="POST",
+            status_code=500,
+        )
+        httpx_mock.add_response(
+            url="https://api.tempo.io/4/worklogs",
+            method="POST",
+            status_code=500,
+        )
+
+        args = argparse.Namespace(preview_file=str(preview_file), approved=True)
+        with pytest.raises(SystemExit) as exc:
+            cmd_submit(args)
+        assert exc.value.code == 1

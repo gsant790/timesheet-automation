@@ -39,7 +39,34 @@ def cmd_preview(args: argparse.Namespace) -> None:
 
 
 def cmd_submit(args: argparse.Namespace) -> None:
-    raise NotImplementedError
+    from .config import load_env
+    from .tempo_client import TempoClient
+
+    if not args.approved:
+        print(
+            "ERROR: Refusing to submit. Review the preview file and re-run with --approved.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    preview_path = Path(args.preview_file)
+    if not preview_path.exists():
+        print(f"ERROR: Preview file not found: {preview_path}", file=sys.stderr)
+        sys.exit(1)
+
+    data = json.loads(preview_path.read_text())
+    worklogs = data["worklogs"]
+
+    env = load_env()
+    tempo = TempoClient(env["tempo_api_token"])
+    try:
+        result = tempo.submit_batch(worklogs)
+    finally:
+        tempo.close()
+
+    print(json.dumps(result, indent=2))
+    if result["failed"] > 0:
+        sys.exit(1)
 
 
 def main() -> None:
