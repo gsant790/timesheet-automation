@@ -57,6 +57,7 @@ def cmd_submit(args: argparse.Namespace) -> None:
     data = json.loads(preview_path.read_text())
     worklogs = data["worklogs"]
 
+    print(f"Submitting {len(worklogs)} worklogs...")
     env = load_env()
     tempo = TempoClient(env["tempo_api_token"])
     try:
